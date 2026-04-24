@@ -89,23 +89,6 @@ http://127.0.0.1:5000
 
 ---
 
-## 🧠 Algoritma
-
-### Rota Motoru
-- **Graf tipi:** OSMnx `MultiDiGraph` → hesaplama için `DiGraph`'a dönüştürülür (paralel kenarlarda en kısa seçilir)
-- **Algoritma:** Yen's k-shortest paths (`nx.shortest_simple_paths`) — en kısa rotanın 2.5 katına kadar olan adaylar arasından en fazla 12 rota üretilir
-- **Mesafe ölçümü:** Her aday için orijinal graf üzerinden gerçek km hesaplanır (ağırlık şişmesi olmaz)
-
-### 3 Rota Profili
-
-| Profil | Seçim Kriteri | Renk |
-|---|---|---|
-| En Kısa | `min(mesafe_m)` | 🔵 Mavi |
-| En Güvenli | `min(hasar_kesimi, sonra mesafe)` | 🟢 Yeşil |
-| Dengeli | `min(0.45 × mesafe_norm + 0.55 × hasar_norm)` | 🟣 Mor |
-
-
-
 
 ## 🛠️ Kullanılan Teknolojiler
 
