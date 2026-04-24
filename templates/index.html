@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Afet Rota Sistemi</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; }
+    #harita { height: 100vh; width: 100%; }
+
+    /* ── Ana Panel ── */
+    #panel {
+      position: absolute; top: 10px; right: 10px; z-index: 1000;
+      background: white; padding: 14px; border-radius: 10px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.25); width: 290px;
+      max-height: calc(100vh - 20px); overflow-y: auto;
+    }
+    #panel h3 { margin: 0 0 3px 0; font-size: 15px; }
+    .kaynak   { font-size: 10px; color: #888; margin-bottom: 8px; }
+
+    button {
+      width: 100%; padding: 9px; margin-top: 6px;
+      color: white; border: none; border-radius: 6px;
+      cursor: pointer; font-size: 13px; transition: opacity .2s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:hover:not(:disabled) { opacity: 0.88; }
+
+    #rotaBtn    { background: #2980b9; }
+    #kapaliBtn  { background: #e67e22; }
+    #yolBtn     { background: #c0392b; }
+    #binaBtn    { background: #922b21; }
+    #sifirlaBtn { background: #7f8c8d; }
+
+    #bilgi {
+      margin-top: 8px; font-size: 12px; color: #555; line-height: 1.6;
+      background: #f9f9f9; padding: 6px 8px; border-radius: 5px;
+    }
+
+    .separator { border: none; border-top: 1px solid #eee; margin: 8px 0; }
+
+    .spinner {
+      display: inline-block; width: 10px; height: 10px;
+      border: 2px solid rgba(0,0,0,0.15); border-top-color: #2980b9;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 4px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Rota Kartları ── */
+    #rotaKartlari { display: none; margin-top: 10px; }
+    #rotaKartlariBaslik {
+      font-size: 12px; font-weight: bold; color: #333; margin-bottom: 2px;
+    }
+
+    .rota-kart {
+      border: 2px solid #ddd; border-radius: 8px;
+      padding: 10px 12px; margin-top: 8px;
+      cursor: pointer; transition: box-shadow .2s, border-color .2s;
+      position: relative;
+    }
+    .rota-kart:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .rota-kart.aktif { box-shadow: 0 0 0 2px currentColor; }
+    .rota-kart.gizli { opacity: 0.45; }
+
+    .kart-baslik {
+      font-size: 13px; font-weight: bold;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .renk-cubugu {
+      width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+    }
+    .optimal-rozet {
+      font-size: 10px; background: #f39c12; color: white;
+      padding: 1px 6px; border-radius: 10px; margin-left: auto;
+      white-space: nowrap;
+    }
+    .kart-metrik {
+      display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap;
+    }
+    .metrik-kutu {
+      background: #f5f5f5; border-radius: 5px; padding: 4px 8px;
+      font-size: 11px; text-align: center; flex: 1; min-width: 60px;
+    }
+    .metrik-kutu .deger { font-weight: bold; font-size: 13px; display: block; }
+    .metrik-kutu .etiket { color: #888; }
+    .hasar-kutu { background: #fff3f3; }
+    .hasar-kutu .deger { color: #c0392b; }
+
+    .goster-gizle {
+      font-size: 10px; color: #888; margin-top: 5px;
+      cursor: pointer; text-align: right;
+      text-decoration: underline; user-select: none;
+    }
+
+    /* Optimal öneri kutusu */
+    #optimalOneri {
+      display: none;
+      margin-top: 10px; padding: 9px 11px;
+      background: #fff8e1; border-left: 4px solid #f39c12;
+      border-radius: 5px; font-size: 12px; line-height: 1.6;
+    }
+
+    /* Lejant */
+    .legend { margin-top: 10px; font-size: 11px; color: #444; }
+    .legend-item { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+    .leg-line { width: 22px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+    .leg-dot  { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── Yakın Yerler Modal ── */
+    #yakinModal {
+      display: none; position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.55); z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    #yakinModal.acik { display: flex; }
+    #modalKutu {
+      background: #fff; border-radius: 12px;
+      width: 480px; max-width: 95vw; max-height: 85vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35); overflow: hidden;
+    }
+    #modalBaslik {
+      background: linear-gradient(135deg, #1a5276, #27ae60);
+      color: white; padding: 16px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #modalBaslik h2 { margin: 0; font-size: 17px; }
+    #modalKapat {
+      background: none; border: none; color: white;
+      font-size: 22px; cursor: pointer; padding: 0; width: auto; margin: 0; line-height: 1;
+    }
+    #modalFiltre {
+      display: flex; gap: 6px; padding: 10px 14px;
+      background: #f4f6f8; flex-wrap: wrap; border-bottom: 1px solid #e0e0e0;
+    }
+    .filtre-btn {
+      padding: 5px 11px; border: none; border-radius: 20px;
+      cursor: pointer; font-size: 12px; font-weight: 600;
+      background: #dde; color: #444; width: auto; margin: 0; transition: all 0.2s;
+    }
+    .filtre-btn.aktif { color: white; }
+    .filtre-btn[data-tur="hepsi"].aktif     { background: #555; }
+    .filtre-btn[data-tur="hospital"].aktif  { background: #e74c3c; }
+    .filtre-btn[data-tur="pharmacy"].aktif  { background: #27ae60; }
+    .filtre-btn[data-tur="fire_station"].aktif { background: #e67e22; }
+    .filtre-btn[data-tur="police"].aktif    { background: #2980b9; }
+    .filtre-btn[data-tur="clinic"].aktif    { background: #8e44ad; }
+    #modalYaricap {
+      padding: 8px 14px; background: #f4f6f8;
+      border-bottom: 1px solid #e0e0e0; font-size: 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    #yaricapInput { width: 80px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+    #araBtn { background: #1a5276; width: auto; padding: 5px 14px; font-size: 12px; border-radius: 4px; margin: 0; }
+    #modalListeKap { overflow-y: auto; flex: 1; padding: 10px 14px; }
+    #modalYukleniyor { text-align: center; color: #888; padding: 30px; font-size: 14px; }
+    .yer-kart {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px; border-radius: 8px; margin-bottom: 8px;
+      border: 1px solid #e8e8e8; transition: background 0.15s; flex-direction: column;
+    }
+    .yer-kart-ust { display: flex; align-items: flex-start; gap: 10px; width: 100%; cursor: pointer; }
+    .yer-kart:hover { background: #f0f8ff; }
+    .yer-ikon {
+      width: 38px; height: 38px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0; color: white;
+    }
+    .yer-bilgi { flex: 1; }
+    .yer-isim { font-weight: 700; font-size: 13px; color: #222; }
+    .yer-tur  { font-size: 11px; color: #888; margin-top: 2px; }
+    .yer-mesafe {
+      font-size: 12px; font-weight: 600; color: white;
+      background: #1a5276; border-radius: 12px;
+      padding: 2px 8px; white-space: nowrap; align-self: center;
+    }
+    .yer-adres { font-size: 11px; color: #666; margin-top: 3px; }
+    .yer-tel   { font-size: 11px; color: #2980b9; margin-top: 1px; }
+    .yer-rota-btn {
+      width: 100%; padding: 7px; margin: 6px 0 0 0;
+      background: linear-gradient(90deg, #1a5276, #27ae60);
+      color: white; border: none; border-radius: 6px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .yer-rota-btn:hover { opacity: 0.85; }
+    #bosluk { text-align: center; color: #aaa; padding: 30px; font-size: 14px; }
+    #yakinYerBtn { background: #27ae60; }
+  </style>
+</head>
+<body>
+<div id="harita"></div>
+<div id="panel">
+  <h3>🗺️ Afet Rota Sistemi</h3>
+  <div class="kaynak">📡 Copernicus EMS – EMSR648 AOI04 Kahramanmaraş</div>
+
+  <div id="bilgi">Başlangıç noktası seçmek için haritaya tıkla</div>
+
+  <hr class="separator">
+  <div style="font-size:11px;color:#888;margin-bottom:2px">🛰️ Uydu Hasar Katmanları</div>
+  <button id="yolBtn"  onclick="yolKatmanAcKapat()">🚫 Copernicus Kapalı Yollar (134)</button>
+  <button id="binaBtn" onclick="binaKatmanAcKapat()">🏚️ Copernicus Hasarlı Binalar (927)</button>
+
+  <hr class="separator">
+  <div style="font-size:11px;color:#888;margin-bottom:2px">✏️ Manuel</div>
+  <button id="kapaliBtn" onclick="kapaliModuAcKapat()">🚧 Manuel Kapalı Yol Ekle</button>
+
+  <hr class="separator">
+  <button id="rotaBtn"    onclick="rotaHesapla()">🔁 Rota Hesapla</button>
+  <button id="yakinYerBtn" onclick="yakinYerleriAc()">📍 Yakın Hastane / Eczane</button>
+  <button id="sifirlaBtn" onclick="sifirla()">🗑️ Sıfırla</button>
+
+  <!-- Alternatif Rota Kartları -->
+  <div id="rotaKartlari">
+    <hr class="separator">
+    <div id="rotaKartlariBaslik">
+      📊 Alternatif Rotalar
+      <span style="font-size:10px;color:#888;font-weight:normal"> (kartı tıkla → haritada göster)</span>
+    </div>
+    <!-- JS ile doldurulacak -->
+  </div>
+
+  <!-- Optimal Öneri -->
+  <div id="optimalOneri"></div>
+
+  <!-- Lejant -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="leg-line" style="background:none;border-top:3px dashed #e74c3c"></div>
+      Copernicus kapalı yol
+    </div>
+    <div class="legend-item"><div class="leg-dot" style="background:#7b241c"></div> Yıkık bina</div>
+    <div class="legend-item"><div class="leg-dot" style="background:#e74c3c"></div> Hasarlı bina</div>
+    <div class="legend-item"><div class="leg-dot" style="background:#f39c12"></div> Muhtemel hasar</div>
+    <div class="legend-item"><div class="leg-line" style="background:#2980b9"></div> En kısa rota</div>
+    <div class="legend-item"><div class="leg-line" style="background:#27ae60"></div> En güvenli rota</div>
+    <div class="legend-item"><div class="leg-line" style="background:#8e44ad"></div> Dengeli rota</div>
+  </div>
+</div>
+
+<script>
+  var harita = L.map("harita").setView([37.585, 36.937], 14);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(harita);
+
+  var baslangicMarker = null, bitisMarker = null;
+  var mod = "baslangic", kapaliAcik = false;
+  var kapaliYollar = [], kapaliLayerlar = [];
+  var yolLayer = null, yolAcik = false;
+  var binaLayer = null, binaAcik = false;
+
+  // Çoklu rota state
+  var rotaLayerlar = {};
+  var rotaVerisi   = [];
+  var aktifRotaId  = null;
+
+  function hasarRengi(grade) {
+    if (grade === "Destroyed")        return "#7b241c";
+    if (grade === "Damaged")          return "#e74c3c";
+    if (grade === "Possibly damaged") return "#f39c12";
+    return "#95a5a6";
+  }
+
+  // ---------------------------------------------------------------------------
+  // 🚫 Copernicus Kapalı Yollar
+  // ---------------------------------------------------------------------------
+  function yolKatmanAcKapat() {
+    if (yolAcik) {
+      if (yolLayer) { harita.removeLayer(yolLayer); yolLayer = null; }
+      yolAcik = false;
+      document.getElementById("yolBtn").innerText = "🚫 Copernicus Kapalı Yollar (134)";
+      document.getElementById("yolBtn").style.background = "#c0392b";
+      document.getElementById("bilgi").innerHTML = "Kapalı yol katmanı kapatıldı.";
+      return;
+    }
+    document.getElementById("yolBtn").disabled = true;
+    document.getElementById("yolBtn").innerHTML = '<span class="spinner"></span>Yükleniyor...';
+
+    fetch("/kapali_yollar")
+      .then(function(r) { return r.json(); })
+      .then(function(veri) {
+        document.getElementById("yolBtn").disabled = false;
+        if (veri.durum !== "ok") {
+          document.getElementById("bilgi").innerHTML = "❌ " + veri.mesaj;
+          document.getElementById("yolBtn").innerText = "🚫 Copernicus Kapalı Yollar (134)";
+          return;
+        }
+        yolLayer = L.geoJSON(veri.geojson, {
+          style: { color: "#e74c3c", weight: 4, opacity: 0.9, dashArray: "8,5" },
+          onEachFeature: function(feature, layer) {
+            var p = feature.properties;
+            var isim = (p.isim && p.isim !== "Unknown") ? p.isim : (p.yol_tipi || "Kapalı Yol");
+            layer.bindTooltip("<b>" + isim + "</b><br><small>" + (p.yol_tipi||"") + "</small>",
+                              { permanent: false, direction: "top" });
+          }
+        }).addTo(harita);
+        yolAcik = true;
+        document.getElementById("yolBtn").innerText = "🚫 Kapalı Yolları Gizle";
+        document.getElementById("yolBtn").style.background = "#7b241c";
+        document.getElementById("bilgi").innerHTML =
+          "✅ <b>" + veri.yol_sayisi + " kapalı yol</b> haritada gösterildi. " +
+          veri.kapali_kenar_sayisi + " graf kenarı devre dışı.";
+      })
+      .catch(function(e) {
+        document.getElementById("yolBtn").disabled = false;
+        document.getElementById("yolBtn").innerText = "🚫 Copernicus Kapalı Yollar (134)";
+        document.getElementById("bilgi").innerHTML = "Hata: " + e;
+      });
+  }
+
+  // ---------------------------------------------------------------------------
+  // 🏚️ Copernicus Hasarlı Binalar
+  // ---------------------------------------------------------------------------
+  function binaKatmanAcKapat() {
+    if (binaAcik) {
+      if (binaLayer) { harita.removeLayer(binaLayer); binaLayer = null; }
+      binaAcik = false;
+      document.getElementById("binaBtn").innerText = "🏚️ Copernicus Hasarlı Binalar (927)";
+      document.getElementById("binaBtn").style.background = "#922b21";
+      document.getElementById("bilgi").innerHTML = "Bina katmanı kapatıldı.";
+      return;
+    }
+    document.getElementById("binaBtn").disabled = true;
+    document.getElementById("binaBtn").innerHTML = '<span class="spinner"></span>Yükleniyor...';
+
+    fetch("/copernicus_binalar")
+      .then(function(r) { return r.json(); })
+      .then(function(veri) {
+        document.getElementById("binaBtn").disabled = false;
+        if (veri.durum !== "ok") {
+          document.getElementById("bilgi").innerHTML = "❌ " + veri.mesaj;
+          document.getElementById("binaBtn").innerText = "🏚️ Copernicus Hasarlı Binalar (927)";
+          return;
+        }
+        binaLayer = L.geoJSON(veri.geojson, {
+          pointToLayer: function(feature, latlng) {
+            var grade = feature.properties.damage_gra;
+            var renk  = hasarRengi(grade);
+            var boyut = grade === "Destroyed" ? 10 : grade === "Damaged" ? 8 : 6;
+            return L.marker(latlng, {
+              icon: L.divIcon({
+                className: "",
+                html: '<div style="width:' + boyut + 'px;height:' + boyut + 'px;'
+                    + 'background:' + renk + ';border:1px solid rgba(0,0,0,0.25);'
+                    + 'border-radius:2px;opacity:0.9"></div>',
+                iconSize: [boyut, boyut], iconAnchor: [boyut/2, boyut/2]
+              })
+            });
+          },
+          onEachFeature: function(feature, layer) {
+            var p = feature.properties;
+            layer.bindTooltip(
+              "<b>" + p.damage_gra + "</b><br><small>" + (p.obj_type||"") + "</small>",
+              { permanent: false, direction: "top" }
+            );
+          }
+        }).addTo(harita);
+        binaAcik = true;
+        document.getElementById("binaBtn").innerText = "🏚️ Binaları Gizle";
+        document.getElementById("binaBtn").style.background = "#641e16";
+        var ist = veri.istatistik;
+        document.getElementById("bilgi").innerHTML =
+          "✅ <b>" + veri.bina_sayisi + " hasarlı bina</b>:<br>" +
+          "🔴 Yıkık: <b>" + (ist["Destroyed"]||0) + "</b>  " +
+          "🟠 Hasarlı: <b>" + (ist["Damaged"]||0) + "</b>  " +
+          "🟡 Muhtemel: <b>" + (ist["Possibly damaged"]||0) + "</b><br>" +
+          "<small>" + veri.kapali_kenar_sayisi + " yol kenarı devre dışı</small>";
+      })
+      .catch(function(e) {
+        document.getElementById("binaBtn").disabled = false;
+        document.getElementById("binaBtn").innerText = "🏚️ Copernicus Hasarlı Binalar (927)";
+        document.getElementById("bilgi").innerHTML = "Hata: " + e;
+      });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Harita tıklama
+  // ---------------------------------------------------------------------------
+  harita.on("click", function(e) {
+    if (kapaliAcik) {
+      fetch("/yakin_yol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: e.latlng.lat, lng: e.latlng.lng })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(veri) {
+          if (veri.durum === "ok") {
+            kapaliLayerlar.push(L.polyline(veri.koordinatlar,
+              { color: "#e67e22", weight: 5 }).addTo(harita));
+            kapaliYollar.push(veri.kenar);
+            document.getElementById("bilgi").innerHTML =
+              kapaliYollar.length + " manuel yol kapatıldı.";
+          }
+        });
+      return;
+    }
+
+    // ── DEĞİŞİKLİK: mod "bekle" ise (rota hesaplandıktan sonra)
+    // yeni tıklamada başlangıç noktası güncellenmesi yerine
+    // başlangıç → bitiş akışı yeniden başlatılır.
+    if (mod === "bekle") {
+      mod = "baslangic";
+    }
+
+    if (mod === "baslangic") {
+      if (baslangicMarker) harita.removeLayer(baslangicMarker);
+      baslangicMarker = L.marker(e.latlng).addTo(harita);
+      document.getElementById("bilgi").innerHTML = "Bitiş noktasını seç";
+      mod = "bitis";
+    } else if (mod === "bitis") {
+      if (bitisMarker) harita.removeLayer(bitisMarker);
+      bitisMarker = L.marker(e.latlng).addTo(harita);
+      document.getElementById("bilgi").innerHTML = "Rota Hesapla butonuna bas";
+      mod = "bekle";
+    }
+  });
+
+  function kapaliModuAcKapat() {
+    kapaliAcik = !kapaliAcik;
+    if (kapaliAcik) {
+      document.getElementById("kapaliBtn").style.background = "#c0392b";
+      document.getElementById("kapaliBtn").innerText = "🚧 Eklemeyi Bitir";
+      document.getElementById("bilgi").innerHTML = "Kapatmak istediğin yola tıkla";
+      harita.getContainer().style.cursor = "crosshair";
+    } else {
+      document.getElementById("kapaliBtn").style.background = "#e67e22";
+      document.getElementById("kapaliBtn").innerText = "🚧 Manuel Kapalı Yol Ekle";
+      document.getElementById("bilgi").innerHTML = "Başlangıç/bitiş noktası seç";
+      harita.getContainer().style.cursor = "";
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rota hesapla
+  // ── DEĞİŞİKLİK: Her çağrıda önce eski rota layerları temizlenir,
+  //    marker'lara ve mod'a dokunulmaz; böylece sıfırlamadan tekrar
+  //    hesaplanabilir.
+  // ---------------------------------------------------------------------------
+  function rotaHesapla() {
+    if (!baslangicMarker || !bitisMarker) {
+      alert("Önce başlangıç ve bitiş noktası seç!");
+      return;
+    }
+
+    // Sadece rota layerlarını temizle; marker, katman, mod'a dokunma
+    Object.values(rotaLayerlar).forEach(function(l) { harita.removeLayer(l); });
+    rotaLayerlar = {};
+    rotaVerisi   = [];
+    aktifRotaId  = null;
+
+    document.getElementById("bilgi").innerHTML =
+      '<span class="spinner"></span>Rotalar hesaplanıyor...';
+    document.getElementById("rotaKartlari").style.display = "none";
+    document.getElementById("optimalOneri").style.display = "none";
+
+    fetch("/rota", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        baslangic:  { lat: baslangicMarker.getLatLng().lat, lng: baslangicMarker.getLatLng().lng },
+        bitis:      { lat: bitisMarker.getLatLng().lat,     lng: bitisMarker.getLatLng().lng },
+        kapali:     kapaliYollar,
+        yol_aktif:  yolAcik,
+        bina_aktif: binaAcik
+      })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(veri) {
+        if (veri.durum !== "ok") {
+          document.getElementById("bilgi").innerHTML = "❌ " + veri.mesaj;
+          return;
+        }
+
+        rotaVerisi = veri.rotalar;
+
+        // Tüm rotaları haritaya ekle
+        veri.rotalar.forEach(function(rota) {
+          var weight  = rota.optimal ? 7 : 4;
+          var opacity = rota.optimal ? 0.95 : 0.6;
+          var lyr = L.geoJSON(rota.geojson, {
+            style: { color: rota.renk, weight: weight, opacity: opacity }
+          }).addTo(harita);
+          rotaLayerlar[rota.id] = lyr;
+        });
+
+        // Optimal rotaya zoom yap
+        var optimalRota = veri.rotalar.find(function(r) { return r.optimal; });
+        if (optimalRota) {
+          harita.fitBounds(rotaLayerlar[optimalRota.id].getBounds());
+          aktifRotaId = optimalRota.id;
+        }
+
+        // Kartları oluştur
+        renderRotaKartlari(veri.rotalar);
+
+        // Optimal öneri
+        renderOptimalOneri(optimalRota, veri.rotalar);
+
+        document.getElementById("bilgi").innerHTML =
+          "✅ 3 alternatif rota bulundu. (" + veri.kapali_kenar_sayisi + " kenar devre dışı)" +
+          " &nbsp;<a href='#' style='font-size:11px;color:#2980b9' onclick='noktaDegiştir();return false;'>Noktaları Değiştir</a>";
+      })
+      .catch(function(e) {
+        document.getElementById("bilgi").innerHTML = "Hata: " + e;
+      });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Noktaları değiştir linki için yardımcı fonksiyon
+  // ---------------------------------------------------------------------------
+  function noktaDegiştir() {
+    if (baslangicMarker) harita.removeLayer(baslangicMarker);
+    if (bitisMarker)     harita.removeLayer(bitisMarker);
+    baslangicMarker = null;
+    bitisMarker     = null;
+    Object.values(rotaLayerlar).forEach(function(l) { harita.removeLayer(l); });
+    rotaLayerlar = {}; rotaVerisi = []; aktifRotaId = null;
+    document.getElementById("rotaKartlari").style.display = "none";
+    document.getElementById("optimalOneri").style.display = "none";
+    mod = "baslangic";
+    document.getElementById("bilgi").innerHTML = "Yeni başlangıç noktası seç";
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rota kartlarını render et
+  // ---------------------------------------------------------------------------
+  function renderRotaKartlari(rotalar) {
+    var kont = document.getElementById("rotaKartlari");
+
+    // Başlık div'i koru, geri kalanı temizle
+    var baslik = document.getElementById("rotaKartlariBaslik");
+    kont.innerHTML = "";
+    kont.appendChild(baslik);
+
+    rotalar.forEach(function(rota) {
+      var kart = document.createElement("div");
+      kart.className = "rota-kart" + (rota.optimal ? " aktif" : "");
+      kart.id = "kart-" + rota.id;
+      kart.style.borderColor = rota.renk;
+
+      var hasarMesaj = rota.hasar === 0
+        ? '<span style="color:#27ae60">Yok ✓</span>'
+        : '<span style="color:#c0392b">' + rota.hasar + ' kesim</span>';
+
+      kart.innerHTML =
+        '<div class="kart-baslik">' +
+          '<div class="renk-cubugu" style="background:' + rota.renk + '"></div>' +
+          rota.isim +
+          (rota.optimal ? '<span class="optimal-rozet">⭐ Önerilen</span>' : '') +
+        '</div>' +
+        '<div class="kart-metrik">' +
+          '<div class="metrik-kutu">' +
+            '<span class="deger">' + rota.mesafe + ' km</span>' +
+            '<span class="etiket">Mesafe</span>' +
+          '</div>' +
+          '<div class="metrik-kutu">' +
+            '<span class="deger">' + rota.sure + ' dk</span>' +
+            '<span class="etiket">Süre</span>' +
+          '</div>' +
+          '<div class="metrik-kutu hasar-kutu">' +
+            '<span class="deger">' + hasarMesaj + '</span>' +
+            '<span class="etiket">Hasar Bölgesi</span>' +
+          '</div>' +
+        '</div>' +
+        (rota.uyari ? '<div style="font-size:10px;color:#e67e22;margin-top:4px">⚠️ ' + rota.uyari + '</div>' : '') +
+        '<div class="goster-gizle" onclick="kartToggle(\'' + rota.id + '\')">' +
+          (rota.optimal ? 'Gizle' : 'Göster / Odaklan') +
+        '</div>';
+
+      kart.addEventListener("click", function(e) {
+        if (e.target.classList.contains("goster-gizle")) return;
+        rotayaOdaklan(rota.id);
+      });
+
+      kont.appendChild(kart);
+    });
+
+    kont.style.display = "block";
+  }
+
+  function rotayaOdaklan(id) {
+    aktifRotaId = id;
+    rotaVerisi.forEach(function(rota) {
+      if (rotaLayerlar[rota.id]) {
+        rotaLayerlar[rota.id].setStyle({
+          weight:  rota.id === id ? 7 : 3,
+          opacity: rota.id === id ? 0.95 : 0.35
+        });
+        if (rota.id === id) {
+          rotaLayerlar[rota.id].bringToFront();
+          harita.fitBounds(rotaLayerlar[rota.id].getBounds());
+        }
+      }
+    });
+    rotaVerisi.forEach(function(rota) {
+      var kart = document.getElementById("kart-" + rota.id);
+      if (kart) kart.classList.toggle("aktif", rota.id === id);
+    });
+  }
+
+  function kartToggle(id) {
+    var lyr = rotaLayerlar[id];
+    if (!lyr) return;
+    var el = document.getElementById("kart-" + id);
+    if (harita.hasLayer(lyr)) {
+      harita.removeLayer(lyr);
+      if (el) el.classList.add("gizli");
+      document.querySelector("#kart-" + id + " .goster-gizle").innerText = "Göster / Odaklan";
+    } else {
+      lyr.addTo(harita);
+      if (el) el.classList.remove("gizli");
+      document.querySelector("#kart-" + id + " .goster-gizle").innerText = "Gizle";
+      rotayaOdaklan(id);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Optimal öneri kutusu
+  // ---------------------------------------------------------------------------
+  function renderOptimalOneri(optimalRota, tumRotalar) {
+    var kutu = document.getElementById("optimalOneri");
+    if (!optimalRota) { kutu.style.display = "none"; return; }
+
+    var neden = "";
+    if (optimalRota.id === "en_guvenli") {
+      neden = "Hasarlı bölgelerden en az geçen rota olduğu için önerildi. Afet koşullarında can güvenliği mesafeden önce gelir.";
+    } else if (optimalRota.id === "en_kisa") {
+      neden = "Hem en kısa hem de hasar geçişi düşük, dolayısıyla tüm kriterler açısından en verimli seçenek.";
+    } else {
+      neden = "Mesafe ve güvenlik dengesi en iyi bu rotada sağlandı. Uzun ama hasarsız alanlara yönlendirir.";
+    }
+
+    kutu.innerHTML =
+      "⭐ <b>Önerilen Rota: " + optimalRota.isim + "</b><br>" +
+      optimalRota.mesafe + " km · " + optimalRota.sure + " dk · " +
+      (optimalRota.hasar === 0 ? "Hasar bölgesi yok" : optimalRota.hasar + " hasar kesimi") +
+      "<br><span style='color:#888'>" + neden + "</span>";
+
+    kutu.style.display = "block";
+  }
+
+  // ---------------------------------------------------------------------------
+  // ── Yakın Yerler ──────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  var yakinKonum   = null;
+  var yakinMarkerlar = [];
+  var tumYerler    = [];
+  var aktifFiltre  = "hepsi";
+
+  var TUR_BILGI = {
+    hospital:     { emoji: "🏥", renk: "#e74c3c", etiket: "Hastane" },
+    pharmacy:     { emoji: "💊", renk: "#27ae60", etiket: "Eczane" },
+    fire_station: { emoji: "🚒", renk: "#e67e22", etiket: "İtfaiye" },
+    police:       { emoji: "🚔", renk: "#2980b9", etiket: "Polis" },
+    clinic:       { emoji: "🩺", renk: "#8e44ad", etiket: "Klinik" },
+    doctors:      { emoji: "👨‍⚕️", renk: "#16a085", etiket: "Doktor" },
+  };
+  function turBilgi(tur) { return TUR_BILGI[tur] || { emoji: "📌", renk: "#555", etiket: tur }; }
+
+  function yakinYerleriAc() {
+    var m = harita.getCenter();
+    yakinKonum = { lat: m.lat, lng: m.lng };
+    document.getElementById("yakinModal").classList.add("acik");
+    yakinYerleriAra();
+  }
+
+  function modalKapat() {
+    document.getElementById("yakinModal").classList.remove("acik");
+  }
+
+  function yakinYerleriAra() {
+    var yaricap = parseInt(document.getElementById("yaricapInput").value) || 2000;
+    document.getElementById("modalYukleniyor").style.display = "block";
+    document.getElementById("modalListe").innerHTML = "";
+    document.getElementById("bosluk").style.display = "none";
+    var m = harita.getCenter();
+    yakinKonum = { lat: m.lat, lng: m.lng };
+
+    fetch("/yakin_yerler", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ lat: yakinKonum.lat, lng: yakinKonum.lng, yaricap: yaricap })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(veri) {
+      document.getElementById("modalYukleniyor").style.display = "none";
+      if (veri.durum !== "ok") {
+        document.getElementById("modalListe").innerHTML = "<p style='color:red'>Hata: " + veri.mesaj + "</p>";
+        return;
+      }
+      tumYerler = veri.yerler;
+      yakinMarkerlar.forEach(function(m) { harita.removeLayer(m); });
+      yakinMarkerlar = [];
+      tumYerler.forEach(function(yer) {
+        var b = turBilgi(yer.tur);
+        var icon = L.divIcon({
+          className: "",
+          html: '<div style="background:' + b.renk + ';color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.4)">' + b.emoji + '</div>',
+          iconSize: [32,32], iconAnchor: [16,16]
+        });
+        var mk = L.marker([yer.lat, yer.lng], { icon: icon })
+          .bindTooltip("<b>" + yer.isim + "</b><br>" + b.etiket + " — " + yer.mesafe_km + " km", { direction: "top" })
+          .addTo(harita);
+        yakinMarkerlar.push(mk);
+      });
+      listeGoster(aktifFiltre);
+    })
+    .catch(function(e) {
+      document.getElementById("modalYukleniyor").style.display = "none";
+      document.getElementById("modalListe").innerHTML = "<p style='color:red'>Bağlantı hatası.</p>";
+    });
+  }
+
+  function listeGoster(filtre) {
+    var liste = document.getElementById("modalListe");
+    liste.innerHTML = "";
+    var filtreli = filtre === "hepsi" ? tumYerler : tumYerler.filter(function(y) { return y.tur === filtre; });
+    if (filtreli.length === 0) { document.getElementById("bosluk").style.display = "block"; return; }
+    document.getElementById("bosluk").style.display = "none";
+    filtreli.forEach(function(yer) {
+      var b = turBilgi(yer.tur);
+      var kart = document.createElement("div");
+      kart.className = "yer-kart";
+      var ust = document.createElement("div");
+      ust.className = "yer-kart-ust";
+      ust.innerHTML =
+        '<div class="yer-ikon" style="background:' + b.renk + '">' + b.emoji + '</div>' +
+        '<div class="yer-bilgi">' +
+          '<div class="yer-isim">' + yer.isim + '</div>' +
+          '<div class="yer-tur">' + b.etiket + '</div>' +
+          (yer.adres ? '<div class="yer-adres">📍 ' + yer.adres + '</div>' : '') +
+          (yer.telefon ? '<div class="yer-tel">📞 ' + yer.telefon + '</div>' : '') +
+        '</div>' +
+        '<div class="yer-mesafe">' + yer.mesafe_km + ' km</div>';
+      ust.onclick = function() { harita.setView([yer.lat, yer.lng], 16); modalKapat(); };
+      var rotaBtn = document.createElement("button");
+      rotaBtn.className = "yer-rota-btn";
+      rotaBtn.innerHTML = "🗺️ Bu Yere Rota Oluştur";
+      rotaBtn.onclick = function(e) { e.stopPropagation(); rotaYereCizdir(yer); };
+      kart.appendChild(ust);
+      kart.appendChild(rotaBtn);
+      liste.appendChild(kart);
+    });
+  }
+
+  function filtrele(btn) {
+    document.querySelectorAll(".filtre-btn").forEach(function(b) { b.classList.remove("aktif"); });
+    btn.classList.add("aktif");
+    aktifFiltre = btn.getAttribute("data-tur");
+    listeGoster(aktifFiltre);
+  }
+
+  function rotaYereCizdir(yer) {
+    var baslangicLatlng = harita.getCenter();
+    if (baslangicMarker) harita.removeLayer(baslangicMarker);
+    if (bitisMarker)     harita.removeLayer(bitisMarker);
+    Object.values(rotaLayerlar).forEach(function(l) { harita.removeLayer(l); });
+    yakinMarkerlar.forEach(function(m) { harita.removeLayer(m); }); yakinMarkerlar = [];
+    rotaLayerlar = {}; rotaVerisi = [];
+    baslangicMarker = L.marker(baslangicLatlng).addTo(harita);
+    bitisMarker     = L.marker([yer.lat, yer.lng]).addTo(harita);
+    mod = "bekle";
+    modalKapat();
+    document.getElementById("bilgi").innerHTML = "⏳ " + yer.isim + " için rotalar hesaplanıyor...";
+    document.getElementById("rotaKartlari").style.display = "none";
+    document.getElementById("optimalOneri").style.display = "none";
+
+    fetch("/rota", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        baslangic:  { lat: baslangicLatlng.lat, lng: baslangicLatlng.lng },
+        bitis:      { lat: yer.lat, lng: yer.lng },
+        kapali:     kapaliYollar,
+        yol_aktif:  yolAcik,
+        bina_aktif: binaAcik
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(veri) {
+      if (veri.durum !== "ok") {
+        document.getElementById("bilgi").innerHTML = "❌ " + veri.mesaj;
+        return;
+      }
+      rotaVerisi = veri.rotalar;
+      veri.rotalar.forEach(function(rota) {
+        var lyr = L.geoJSON(rota.geojson, {
+          style: { color: rota.renk, weight: rota.optimal ? 7 : 4, opacity: rota.optimal ? 0.95 : 0.6 }
+        }).addTo(harita);
+        rotaLayerlar[rota.id] = lyr;
+      });
+      var opt = veri.rotalar.find(function(r) { return r.optimal; });
+      if (opt) harita.fitBounds(rotaLayerlar[opt.id].getBounds());
+      renderRotaKartlari(veri.rotalar);
+      renderOptimalOneri(opt, veri.rotalar);
+      var b = turBilgi(yer.tur);
+      document.getElementById("bilgi").innerHTML = b.emoji + " <b>" + yer.isim + "</b> için 3 rota bulundu!";
+    })
+    .catch(function() {
+      document.getElementById("bilgi").innerHTML = "❌ Sunucu bağlantı hatası.";
+    });
+  }
+
+  document.getElementById("yakinModal").addEventListener("click", function(e) {
+    if (e.target === this) modalKapat();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sıfırla
+  // ---------------------------------------------------------------------------
+  function sifirla() {
+    [baslangicMarker, bitisMarker, yolLayer, binaLayer]
+      .forEach(function(l) { if (l) harita.removeLayer(l); });
+    kapaliLayerlar.forEach(function(l) { harita.removeLayer(l); });
+    Object.values(rotaLayerlar).forEach(function(l) { harita.removeLayer(l); });
+    yakinMarkerlar.forEach(function(m) { harita.removeLayer(m); }); yakinMarkerlar = [];
+
+    baslangicMarker = bitisMarker = yolLayer = binaLayer = null;
+    rotaLayerlar = {}; rotaVerisi = []; aktifRotaId = null;
+    kapaliYollar = []; kapaliLayerlar = [];
+    yolAcik = false; binaAcik = false;
+    mod = "baslangic"; kapaliAcik = false;
+    harita.getContainer().style.cursor = "";
+
+    document.getElementById("yolBtn").style.background    = "#c0392b";
+    document.getElementById("yolBtn").innerText           = "🚫 Copernicus Kapalı Yollar (134)";
+    document.getElementById("yolBtn").disabled            = false;
+    document.getElementById("binaBtn").style.background   = "#922b21";
+    document.getElementById("binaBtn").innerText          = "🏚️ Copernicus Hasarlı Binalar (927)";
+    document.getElementById("binaBtn").disabled           = false;
+    document.getElementById("kapaliBtn").style.background = "#e67e22";
+    document.getElementById("kapaliBtn").innerText        = "🚧 Manuel Kapalı Yol Ekle";
+    document.getElementById("bilgi").innerHTML            = "Başlangıç noktası seç";
+    document.getElementById("rotaKartlari").style.display = "none";
+    document.getElementById("optimalOneri").style.display = "none";
+  }
+</script>
+
+<!-- YAKIN YERLER MODAL -->
+<div id="yakinModal">
+  <div id="modalKutu">
+    <div id="modalBaslik">
+      <h2>📍 Yakın Acil Noktalar</h2>
+      <button id="modalKapat" onclick="modalKapat()">✕</button>
+    </div>
+    <div id="modalYaricap">
+      <label>Arama yarıçapı:</label>
+      <input id="yaricapInput" type="number" value="2000" min="500" max="10000" step="500"> m
+      <button id="araBtn" onclick="yakinYerleriAra()">Ara</button>
+    </div>
+    <div id="modalFiltre">
+      <button class="filtre-btn aktif" data-tur="hepsi" onclick="filtrele(this)">Hepsi</button>
+      <button class="filtre-btn" data-tur="hospital"     onclick="filtrele(this)">🏥 Hastane</button>
+      <button class="filtre-btn" data-tur="pharmacy"     onclick="filtrele(this)">💊 Eczane</button>
+      <button class="filtre-btn" data-tur="fire_station" onclick="filtrele(this)">🚒 İtfaiye</button>
+      <button class="filtre-btn" data-tur="police"       onclick="filtrele(this)">🚔 Polis</button>
+      <button class="filtre-btn" data-tur="clinic"       onclick="filtrele(this)">🩺 Klinik</button>
+    </div>
+    <div id="modalListeKap">
+      <div id="modalYukleniyor" style="display:none">⏳ Aranıyor...</div>
+      <div id="modalListe"></div>
+      <div id="bosluk" style="display:none">Bu alanda sonuç bulunamadı.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
