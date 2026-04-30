@@ -325,7 +325,7 @@ def rota_hesapla():
 
         if not bagli:
             G_temel = kur_graf(sil=False)
-            uyari_genel = "Kapalı yollar nedeniyle tamamen kaçınılabilen alternatif rota gösteriliyor."
+            uyari_genel = "Kapalı yollardan kaçınmak için önerilen alternatif rota görüntüleniyor."
 
         # ── 3 Profil ──
 
